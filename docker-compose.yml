@@ -7,7 +7,10 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://johndoe:randompassword@histudent-db:5432/mydb?schema=histudent
-      - NEXT_PUBLIC_SOCKET_URL=http://localhost:3000
+      - NEXT_PUBLIC_SOCKET_URL=https://histudent.eduarchive.duckdns.org
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.histudent.rule=Host(`histudent.eduarchive.duckdns.org`)
     depends_on:
       histudent-db:
         condition: service_healthy
