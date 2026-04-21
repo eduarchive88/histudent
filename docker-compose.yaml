@@ -3,14 +3,15 @@ version: '3.8'
 services:
   histudent-app:
     build: .
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - DATABASE_URL=postgresql://johndoe:randompassword@histudent-db:5432/mydb?schema=histudent
       - NEXT_PUBLIC_SOCKET_URL=https://histudent.eduarchive.duckdns.org
     labels:
       - traefik.enable=true
       - traefik.http.routers.histudent.rule=Host(`histudent.eduarchive.duckdns.org`)
+      - traefik.http.services.histudent.loadbalancer.server.port=3000
     depends_on:
       histudent-db:
         condition: service_healthy
@@ -22,8 +23,8 @@ services:
       POSTGRES_USER: johndoe
       POSTGRES_PASSWORD: randompassword
       POSTGRES_DB: mydb
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
