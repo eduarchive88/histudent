@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id        Int      @id @default(autoincrement())
+  grade     Int      // 학년
+  class     Int      // 반
+  number    Int      // 번호
+  name      String   // 이름
+  studentId String   @unique // 5자리 학번 (예: 31101)
+}
+
+model Location {
+  id    Int    @id @default(autoincrement())
+  name  String // 호출 장소 (예: 과학실, 1교무실)
+}
+
+model CallHistory {
+  id           Int      @id @default(autoincrement())
+  studentId    String
+  studentName  String
+  reason       String
+  locationName String
+  sessionCode  String   // 특정 교실 세션 구분
+  createdAt    DateTime @default(now())
+}
