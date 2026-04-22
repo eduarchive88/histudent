@@ -1,25 +1,29 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { getStudents, getLocations, addLocation, deleteLocation, uploadStudentsFromExcel } from "@/actions/admin";
-import { Upload, Trash2, Users, MapPin, Download } from "lucide-react";
+import { getStudents, getLocations, addLocation, deleteLocation, uploadStudentsFromExcel, getTeachers, addTeacher, deleteTeacher } from "@/actions/admin";
+import { Upload, Trash2, Users, MapPin, Download, UserCheck } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
 
 type StudentType = { id: number; grade: number; class: number; number: number; name: string; studentId: string };
 type LocationType = { id: number; name: string };
+type TeacherType  = { id: number; name: string };
 
 export default function AdminSettingsPage() {
   const [students, setStudents]   = useState<StudentType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
+  const [teachers, setTeachers]   = useState<TeacherType[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
+  const [newTeacherName, setNewTeacherName]   = useState("");
   const [uploadMsg, setUploadMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const refreshData = async () => {
-    const [st, loc] = await Promise.all([getStudents(), getLocations()]);
+    const [st, loc, tch] = await Promise.all([getStudents(), getLocations(), getTeachers()]);
     setStudents(st);
     setLocations(loc);
+    setTeachers(tch);
   };
 
   useEffect(() => { refreshData(); }, []);
@@ -55,6 +59,19 @@ export default function AdminSettingsPage() {
   const handleDeleteLocation = async (id: number) => {
     if (!confirm("정말 삭제하시겠습니까?")) return;
     await deleteLocation(id);
+    refreshData();
+  };
+
+  const handleAddTeacher = async () => {
+    if (!newTeacherName.trim()) return;
+    const res = await addTeacher(newTeacherName.trim());
+    if (res.success) { setNewTeacherName(""); refreshData(); }
+    else alert(res.error);
+  };
+
+  const handleDeleteTeacher = async (id: number) => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    await deleteTeacher(id);
     refreshData();
   };
 
@@ -137,6 +154,47 @@ export default function AdminSettingsPage() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* 호출 교사 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <UserCheck className="text-emerald-500 w-5 h-5" /> 호출 교사 관리
+        </h2>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            value={newTeacherName}
+            onChange={(e) => setNewTeacherName(e.target.value)}
+            placeholder="교사명 (예: 담임, 과학쌤, 홍길동)"
+            className="border border-slate-300 px-3 py-2 rounded-lg flex-1 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+            onKeyDown={(e) => e.key === "Enter" && handleAddTeacher()}
+          />
+          <button
+            type="button"
+            onClick={handleAddTeacher}
+            className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition text-sm font-semibold"
+          >
+            추가
+          </button>
+        </div>
+        <ul className="flex flex-col gap-1.5">
+          {teachers.length === 0 && (
+            <li className="text-sm text-slate-400 py-3 text-center">등록된 교사가 없습니다.</li>
+          )}
+          {teachers.map((t) => (
+            <li key={t.id} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
+              <span>{t.name}</span>
+              <button
+                type="button"
+                onClick={() => handleDeleteTeacher(t.id)}
+                className="text-slate-300 hover:text-red-500 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* 호출 장소 */}

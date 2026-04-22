@@ -39,10 +39,10 @@ app.prepare().then(() => {
       console.log(`[Socket] ${socket.id} joined session: ${sessionCode}`);
     });
 
-    // 교사가 특정 세션으로 학생 호출
-    socket.on("call-student", ({ sessionCode, data }) => {
-      console.log(`[Socket] emit call to session ${sessionCode}`, data);
-      io.to(sessionCode).emit("new-call", data);
+    // 교사가 특정 세션으로 학생 호출 (배치)
+    socket.on("call-students", ({ sessionCode, students }) => {
+      console.log(`[Socket] emit batch call to session ${sessionCode}`, students);
+      io.to(sessionCode).emit("new-calls", students);
     });
 
     socket.on("disconnect", () => {

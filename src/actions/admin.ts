@@ -130,14 +130,38 @@ export async function logCallHistory(data: {
   reason: string;
   locationName: string;
   sessionCode: string;
+  callerName?: string;
 }) {
   try {
-    await prisma.callHistory.create({
-      data,
-    });
+    await prisma.callHistory.create({ data });
     return { success: true };
   } catch (error: any) {
     console.error("Failed to log call history:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTeachers() {
+  return await prisma.teacher.findMany({ orderBy: { id: "asc" } });
+}
+
+export async function addTeacher(name: string) {
+  try {
+    if (!name.trim()) return { success: false, error: "이름을 입력해주세요." };
+    await prisma.teacher.create({ data: { name: name.trim() } });
+    revalidatePath("/admin/settings");
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteTeacher(id: number) {
+  try {
+    await prisma.teacher.delete({ where: { id } });
+    revalidatePath("/admin/settings");
+    return { success: true };
+  } catch (error: any) {
     return { success: false, error: error.message };
   }
 }

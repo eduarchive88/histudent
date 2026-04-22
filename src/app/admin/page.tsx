@@ -2,37 +2,43 @@
 
 import { useState, useEffect } from "react";
 import { useSocket } from "@/lib/socketClient";
-import { getStudents, getLocations, logCallHistory } from "@/actions/admin";
-import { BellRing, Users, MapPin, Search, X } from "lucide-react";
+import { getStudents, getLocations, getTeachers, logCallHistory } from "@/actions/admin";
+import { BellRing, Users, MapPin, Search, X, UserCheck } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
 
 type StudentType = { id: number; grade: number; class: number; number: number; name: string; studentId: string };
 type LocationType = { id: number; name: string };
+type TeacherType = { id: number; name: string };
 
 const LS_SESSION  = "hs_session";
 const LS_LOCATION = "hs_location";
 const LS_REASON   = "hs_reason";
+const LS_CALLER   = "hs_caller";
 
 export default function AdminCallPage() {
   const [students, setStudents]   = useState<StudentType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
+  const [teachers, setTeachers]   = useState<TeacherType[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState("");
   const [reason, setReason] = useState("");
+  const [callerName, setCallerName] = useState("");
   const [sessionCode, setSessionCode] = useState("");
 
   const { socket, isConnected } = useSocket();
 
   useEffect(() => {
-    Promise.all([getStudents(), getLocations()]).then(([st, loc]) => {
+    Promise.all([getStudents(), getLocations(), getTeachers()]).then(([st, loc, tch]) => {
       setStudents(st);
       setLocations(loc);
+      setTeachers(tch);
     });
     setSessionCode(localStorage.getItem(LS_SESSION) || "");
     setSelectedLocation(localStorage.getItem(LS_LOCATION) || "");
     setReason(localStorage.getItem(LS_REASON) || "");
+    setCallerName(localStorage.getItem(LS_CALLER) || "");
   }, []);
 
   const filteredStudents = students.filter((s) => {
@@ -65,12 +71,23 @@ export default function AdminCallPage() {
     if (!locInfo) return;
 
     const targets = students.filter((s) => selectedIds.has(s.studentId));
-    for (const student of targets) {
-      const payload = { studentId: student.studentId, studentName: student.name, reason: reason.trim(), locationName: locInfo.name, sessionCode: code };
-      socket.emit("call-student", { sessionCode: code, data: payload });
+    const caller = callerName.trim() || undefined;
+
+    const batch = targets.map((s) => ({
+      studentId: s.studentId,
+      studentName: s.name,
+      reason: reason.trim(),
+      locationName: locInfo.name,
+      callerName: caller,
+      sessionCode: code,
+    }));
+
+    socket.emit("call-students", { sessionCode: code, students: batch });
+
+    for (const payload of batch) {
       await logCallHistory(payload);
-      if (targets.length > 1) await new Promise((r) => setTimeout(r, 300));
     }
+
     alert(`${targets.map((s) => s.name).join(", ")} 학생을 호출했습니다.`);
   };
 
@@ -158,8 +175,44 @@ export default function AdminCallPage() {
           )}
         </div>
 
-        {/* 장소 + 용무 */}
+        {/* 장소 + 용무 + 호출자 */}
         <div className="flex flex-col gap-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
+            <h2 className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+              <UserCheck className="w-4 h-4 text-emerald-500" /> 호출 교사
+            </h2>
+            {teachers.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { setCallerName(""); localStorage.setItem(LS_CALLER, ""); }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${callerName === "" ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}
+                >
+                  선택 안함
+                </button>
+                {teachers.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => { setCallerName(t.name); localStorage.setItem(LS_CALLER, t.name); }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${callerName === t.name ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200 hover:border-emerald-400"}`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">설정 탭에서 교사를 등록하면 호출자를 선택할 수 있습니다.</p>
+            )}
+            <input
+              type="text"
+              value={callerName}
+              onChange={(e) => { setCallerName(e.target.value); localStorage.setItem(LS_CALLER, e.target.value); }}
+              placeholder="직접 입력 (예: 홍길동)"
+              className="border border-slate-200 px-3 py-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+            />
+          </div>
+
           <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
             <h2 className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
               <MapPin className="w-4 h-4 text-rose-500" /> 호출 장소

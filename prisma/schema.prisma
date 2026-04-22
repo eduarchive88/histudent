@@ -21,12 +21,18 @@ model Location {
   name  String // 호출 장소 (예: 과학실, 1교무실)
 }
 
+model Teacher {
+  id   Int    @id @default(autoincrement())
+  name String
+}
+
 model CallHistory {
   id           Int      @id @default(autoincrement())
   studentId    String
   studentName  String
   reason       String
   locationName String
-  sessionCode  String   // 특정 교실 세션 구분
+  callerName   String?
+  sessionCode  String
   createdAt    DateTime @default(now())
 }
