@@ -19,22 +19,34 @@ export async function uploadStudentsFromExcel(
 
     if (jsonData.length === 0) return { error: "데이터를 찾지 못했습니다. 헤더(학년/반/번호/이름)를 확인하세요." };
 
+    // 실제 헤더 목록 — 이름 컬럼 못 찾을 때 진단용
+    const detectedHeaders = Object.keys(jsonData[0]).join(", ");
+
     const getVal = (row: Record<string, unknown>, keys: string[]) => {
-      const key = Object.keys(row).find((k) => keys.some((pk) => k.includes(pk)));
+      const key = Object.keys(row).find((k) =>
+        keys.some((pk) => k.replace(/\s/g, "").toLowerCase().includes(pk.replace(/\s/g, "").toLowerCase()))
+      );
       return key ? row[key] : null;
     };
 
     const students = jsonData.map((row) => {
-      const grade     = parseInt(String(getVal(row, ["학년", "grade"]) ?? "1")) || 1;
-      const cls       = parseInt(String(getVal(row, ["반", "class"]) ?? "1")) || 1;
-      const number    = parseInt(String(getVal(row, ["번호", "num", "number"]) ?? "1")) || 1;
-      const name      = String(getVal(row, ["이름", "name"]) ?? "이름없음");
+      const grade     = parseInt(String(getVal(row, ["학년", "grade", "년"]) ?? "1")) || 1;
+      const cls       = parseInt(String(getVal(row, ["반", "class", "학급", "班"]) ?? "1")) || 1;
+      const number    = parseInt(String(getVal(row, ["번호", "num", "number", "출석", "No", "no"]) ?? "1")) || 1;
+      const name      = String(getVal(row, ["이름", "성명", "학생명", "name", "성 명", "학생 이름"]) ?? "");
       const studentId = `${grade}${String(cls).padStart(2, "0")}${String(number).padStart(2, "0")}`;
       return { grade, class: cls, number, name, studentId };
     });
 
+    const noNames = students.every((s) => !s.name);
+    if (noNames) {
+      return { error: `이름 열을 찾지 못했습니다. 파일의 헤더: [${detectedHeaders}] — 이름/성명/학생명 중 하나가 있어야 합니다.` };
+    }
+
+    const finalStudents = students.map((s) => ({ ...s, name: s.name || "이름없음" }));
+
     await prisma.student.deleteMany();
-    await prisma.student.createMany({ data: students, skipDuplicates: true });
+    await prisma.student.createMany({ data: finalStudents, skipDuplicates: true });
     revalidatePath("/admin/settings");
     return { count: students.length };
   } catch (error: unknown) {
