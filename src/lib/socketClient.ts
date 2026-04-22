@@ -7,12 +7,13 @@ let socket: Socket | null = null;
 
 export const getSocket = () => {
   if (!socket) {
-    const url = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000";
+    // Use current origin so it works regardless of domain/build-time env
+    const url = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
     socket = io(url, {
       path: "/socket.io",
-      // Nginx 등 리버스 프록시 환경에서 연결 안정성을 위해 폴링/웹소켓 병행 허용
       transports: ["polling", "websocket"],
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     });
   }
   return socket;
