@@ -2,6 +2,45 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { read, utils } from "xlsx";
+
+export async function uploadStudentsFromExcel(
+  _prev: { error?: string; count?: number } | null,
+  formData: FormData
+): Promise<{ error?: string; count?: number }> {
+  try {
+    const file = formData.get("excel") as File | null;
+    if (!file || file.size === 0) return { error: "파일을 선택해주세요." };
+
+    const bytes = await file.arrayBuffer();
+    const workbook = read(bytes);
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = utils.sheet_to_json<Record<string, unknown>>(worksheet);
+
+    if (jsonData.length === 0) return { error: "데이터를 찾지 못했습니다. 헤더(학년/반/번호/이름)를 확인하세요." };
+
+    const getVal = (row: Record<string, unknown>, keys: string[]) => {
+      const key = Object.keys(row).find((k) => keys.some((pk) => k.includes(pk)));
+      return key ? row[key] : null;
+    };
+
+    const students = jsonData.map((row) => {
+      const grade     = parseInt(String(getVal(row, ["학년", "grade"]) ?? "1")) || 1;
+      const cls       = parseInt(String(getVal(row, ["반", "class"]) ?? "1")) || 1;
+      const number    = parseInt(String(getVal(row, ["번호", "num", "number"]) ?? "1")) || 1;
+      const name      = String(getVal(row, ["이름", "name"]) ?? "이름없음");
+      const studentId = `${grade}${String(cls).padStart(2, "0")}${String(number).padStart(2, "0")}`;
+      return { grade, class: cls, number, name, studentId };
+    });
+
+    await prisma.student.deleteMany();
+    await prisma.student.createMany({ data: students, skipDuplicates: true });
+    revalidatePath("/admin/settings");
+    return { count: students.length };
+  } catch (error: unknown) {
+    return { error: error instanceof Error ? error.message : "알 수 없는 오류" };
+  }
+}
 
 export async function getStudents() {
   return await prisma.student.findMany({

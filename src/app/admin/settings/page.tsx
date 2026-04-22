@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { read, utils } from "xlsx";
-import { getStudents, bulkInsertStudents, getLocations, addLocation, deleteLocation } from "@/actions/admin";
+import { useState, useEffect, useActionState } from "react";
+import { getStudents, getLocations, addLocation, deleteLocation, uploadStudentsFromExcel } from "@/actions/admin";
 import { Upload, Trash2, Users, MapPin, Download } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
@@ -14,9 +13,8 @@ export default function AdminSettingsPage() {
   const [students, setStudents]   = useState<StudentType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const [pendingStudents, setPendingStudents] = useState<{grade:number;class:number;number:number;name:string;studentId:string}[] | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [uploadResult, uploadAction, uploading] = useActionState(uploadStudentsFromExcel, null);
 
   const refreshData = async () => {
     const [st, loc] = await Promise.all([getStudents(), getLocations()]);
@@ -26,55 +24,10 @@ export default function AdminSettingsPage() {
 
   useEffect(() => { refreshData(); }, []);
 
-  const parseExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setUploadStatus("파일 읽는 중...");
-    setPendingStudents(null);
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = utils.sheet_to_json<Record<string, unknown>>(worksheet);
-
-      const parsedStudents = jsonData.map((row) => {
-        const getVal = (keys: string[]) => {
-          const key = Object.keys(row).find((k) => keys.some((pk) => k.includes(pk)));
-          return key ? row[key] : null;
-        };
-        const grade = parseInt(String(getVal(["학년", "grade"]) ?? "1")) || 1;
-        const cls   = parseInt(String(getVal(["반", "class"]) ?? "1")) || 1;
-        const num   = parseInt(String(getVal(["번호", "num", "number"]) ?? "1")) || 1;
-        const name  = String(getVal(["이름", "name"]) ?? "이름없음");
-        const studentId = `${grade}${String(cls).padStart(2, "0")}${String(num).padStart(2, "0")}`;
-        return { grade, class: cls, number: num, name, studentId };
-      });
-
-      if (parsedStudents.length === 0) {
-        setUploadStatus("❌ 학생 데이터를 찾지 못했습니다. 헤더(학년/반/번호/이름)를 확인하세요.");
-        return;
-      }
-      // confirm 대신 인라인 확인 UI 사용 (async 내 confirm은 브라우저가 차단)
-      setUploadStatus(`총 ${parsedStudents.length}명 발견 — 아래 버튼으로 저장하세요.`);
-      setPendingStudents(parsedStudents);
-    } catch {
-      setUploadStatus("❌ 파일을 읽는 중 오류가 발생했습니다.");
-    }
-  };
-
-  const confirmUpload = async () => {
-    if (!pendingStudents) return;
-    setUploadStatus("저장 중...");
-    const res = await bulkInsertStudents(pendingStudents, true);
-    setPendingStudents(null);
-    if (res.success) {
-      setUploadStatus(`✅ ${pendingStudents.length}명 업로드 완료!`);
-      refreshData();
-    } else {
-      setUploadStatus(`❌ 오류: ${res.error}`);
-    }
-  };
+  // 업로드 성공 시 목록 갱신
+  useEffect(() => {
+    if (uploadResult?.count) refreshData();
+  }, [uploadResult]);
 
   const handleAddLocation = async () => {
     if (!newLocationName.trim()) return;
@@ -102,61 +55,54 @@ export default function AdminSettingsPage() {
           </h2>
           <span className="text-xs text-slate-400">현재 {students.length}명</span>
         </div>
-        <p className="text-xs text-slate-400 mb-4">엑셀(.xlsx) 헤더: <strong>학년 / 반 / 번호 / 이름</strong></p>
+        <p className="text-xs text-slate-400 mb-4">
+          엑셀(.xlsx) 헤더: <strong>학년 / 반 / 번호 / 이름</strong>
+        </p>
 
-        <div className="flex gap-2 mb-3">
-          <input
-            id="excel-upload"
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={(e) => { setUploadStatus(null); parseExcel(e); }}
-          />
-          <label
-            htmlFor="excel-upload"
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition text-sm cursor-pointer"
-          >
-            <Upload className="w-4 h-4" /> 엑셀 업로드 및 갱신
-          </label>
-          <a
-            href="/api/sample-xlsx"
-            className="flex items-center gap-2 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 transition text-sm border border-slate-200 whitespace-nowrap"
-          >
-            <Download className="w-4 h-4" /> 샘플 양식
-          </a>
-        </div>
-
-        {uploadStatus && (
-          <div className="mb-3 flex flex-col gap-2">
-            <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{uploadStatus}</p>
-            {pendingStudents && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={confirmUpload}
-                  className="flex-1 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition text-sm"
-                >
-                  ✅ {pendingStudents.length}명 저장하기
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setPendingStudents(null); setUploadStatus(null); }}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg hover:bg-slate-200 transition text-sm"
-                >
-                  취소
-                </button>
-              </div>
-            )}
+        <form action={uploadAction} encType="multipart/form-data" className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <label className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition text-sm cursor-pointer">
+              <Upload className="w-4 h-4" />
+              {uploading ? "업로드 중..." : "엑셀 파일 선택 후 업로드"}
+              <input
+                type="file"
+                name="excel"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => e.currentTarget.form?.requestSubmit()}
+              />
+            </label>
+            <a
+              href="/api/sample-xlsx"
+              className="flex items-center gap-2 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 transition text-sm border border-slate-200 whitespace-nowrap"
+            >
+              <Download className="w-4 h-4" /> 샘플 양식
+            </a>
           </div>
-        )}
+
+          {uploading && (
+            <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              ⏳ 서버에서 파일 처리 중...
+            </p>
+          )}
+          {!uploading && uploadResult?.error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              ❌ {uploadResult.error}
+            </p>
+          )}
+          {!uploading && uploadResult?.count && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              ✅ {uploadResult.count}명 업로드 완료!
+            </p>
+          )}
+        </form>
 
         {students.length > 0 && (
-          <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+          <div className="mt-4 max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
             <table className="w-full text-xs">
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
-                  {["학년","반","번호","이름"].map((h) => (
+                  {["학년", "반", "번호", "이름"].map((h) => (
                     <th key={h} className="py-2 px-3 text-left text-slate-500 font-semibold">{h}</th>
                   ))}
                 </tr>
@@ -199,11 +145,17 @@ export default function AdminSettingsPage() {
           </button>
         </div>
         <ul className="flex flex-col gap-1.5">
-          {locations.length === 0 && <li className="text-sm text-slate-400 py-3 text-center">등록된 장소가 없습니다.</li>}
+          {locations.length === 0 && (
+            <li className="text-sm text-slate-400 py-3 text-center">등록된 장소가 없습니다.</li>
+          )}
           {locations.map((loc) => (
             <li key={loc.id} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
               <span>{loc.name}</span>
-              <button type="button" onClick={() => handleDeleteLocation(loc.id)} className="text-slate-300 hover:text-red-500 transition">
+              <button
+                type="button"
+                onClick={() => handleDeleteLocation(loc.id)}
+                className="text-slate-300 hover:text-red-500 transition"
+              >
                 <Trash2 className="w-4 h-4" />
               </button>
             </li>
