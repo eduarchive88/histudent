@@ -18,7 +18,7 @@ export default function DisplayPage() {
   const [activeCalls, setActiveCalls] = useState<CallPayload[]>([]);
   const [countdown, setCountdown] = useState(0);
 
-  const { socket, isConnected } = useSocket();
+  const { socket } = useSocket();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -77,13 +77,19 @@ export default function DisplayPage() {
     setActiveCalls([]);
   };
 
+  const eulo = (word: string) => {
+    const code = word.charCodeAt(word.length - 1) - 0xac00;
+    if (code < 0 || code > 11171) return "으로";
+    const jongseong = code % 28;
+    return jongseong === 0 || jongseong === 8 ? "로" : "으로";
+  };
+
   const buildMessage = (call: CallPayload) => {
     const loc = call.locationName;
-    const suffix = /[aeiouㅏㅓㅗㅜㅡㅣ]$/i.test(loc) ? "로" : "으로";
     if (call.callerName) {
-      return `${call.reason} 용무로 ${call.callerName}에게 ${loc}${suffix} 오세요.`;
+      return `${call.reason} 용무로 ${loc}${eulo(loc)} ${call.callerName}에게 오세요.`;
     }
-    return `${call.reason} 용무로 ${loc}${suffix} 오세요.`;
+    return `${call.reason} 용무로 ${loc}${eulo(loc)} 오세요.`;
   };
 
   // Alert view
