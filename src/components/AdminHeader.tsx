@@ -32,11 +32,14 @@ export default function AdminHeader() {
         <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <Settings2 className="text-blue-500 w-6 h-6" /> 교사 관리자 패널
         </h1>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-          isConnected ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"
-        }`}>
-          {isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-          {isConnected ? "실시간 연결됨" : "연결 중..."}
+        <div
+          title={isConnected ? "실시간 호출 서버에 연결되었습니다" : "실시간 호출 서버에 연결 중입니다. 잠시 기다려주세요."}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-default ${
+            isConnected ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"
+          }`}
+        >
+          {isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5 animate-pulse" />}
+          {isConnected ? "실시간 연결됨" : "서버 연결 중"}
         </div>
       </div>
 

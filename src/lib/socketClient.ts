@@ -7,13 +7,14 @@ let socket: Socket | null = null;
 
 export const getSocket = () => {
   if (!socket) {
-    // Use current origin so it works regardless of domain/build-time env
-    const url = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-    socket = io(url, {
+    // No URL = connects to same origin automatically, works through any proxy
+    socket = io({
       path: "/socket.io",
       transports: ["polling", "websocket"],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      // retry indefinitely
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
     });
   }
   return socket;

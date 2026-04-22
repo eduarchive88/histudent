@@ -15,7 +15,7 @@ export default function AdminSettingsPage() {
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // kept for onChange only
 
   const refreshData = async () => {
     const [st, loc] = await Promise.all([getStudents(), getLocations()]);
@@ -99,14 +99,20 @@ export default function AdminSettingsPage() {
         <p className="text-xs text-slate-400 mb-4">엑셀(.xlsx) 헤더: <strong>학년 / 반 / 번호 / 이름</strong></p>
 
         <div className="flex gap-2 mb-3">
-          <input type="file" accept=".xlsx,.xls" className="hidden" ref={fileInputRef} onChange={parseExcel} />
-          <button
-            type="button"
-            onClick={() => { setUploadStatus(null); fileInputRef.current?.click(); }}
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition text-sm"
+          <input
+            id="excel-upload"
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={(e) => { setUploadStatus(null); parseExcel(e); }}
+          />
+          <label
+            htmlFor="excel-upload"
+            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition text-sm cursor-pointer"
           >
             <Upload className="w-4 h-4" /> 엑셀 업로드 및 갱신
-          </button>
+          </label>
           <a
             href="/api/sample-xlsx"
             className="flex items-center gap-2 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 transition text-sm border border-slate-200 whitespace-nowrap"
