@@ -15,7 +15,8 @@ export default function AdminSettingsPage() {
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // kept for onChange only
+  const [pendingStudents, setPendingStudents] = useState<{grade:number;class:number;number:number;name:string;studentId:string}[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refreshData = async () => {
     const [st, loc] = await Promise.all([getStudents(), getLocations()]);
@@ -30,6 +31,7 @@ export default function AdminSettingsPage() {
     if (!file) return;
     e.target.value = "";
     setUploadStatus("파일 읽는 중...");
+    setPendingStudents(null);
     try {
       const data = await file.arrayBuffer();
       const workbook = read(data);
@@ -53,20 +55,24 @@ export default function AdminSettingsPage() {
         setUploadStatus("❌ 학생 데이터를 찾지 못했습니다. 헤더(학년/반/번호/이름)를 확인하세요.");
         return;
       }
-      if (!confirm(`총 ${parsedStudents.length}명의 학생 데이터를 덮어쓰시겠습니까?`)) {
-        setUploadStatus(null);
-        return;
-      }
-      setUploadStatus("저장 중...");
-      const res = await bulkInsertStudents(parsedStudents, true);
-      if (res.success) {
-        setUploadStatus(`✅ ${parsedStudents.length}명 업로드 완료!`);
-        refreshData();
-      } else {
-        setUploadStatus(`❌ 오류: ${res.error}`);
-      }
+      // confirm 대신 인라인 확인 UI 사용 (async 내 confirm은 브라우저가 차단)
+      setUploadStatus(`총 ${parsedStudents.length}명 발견 — 아래 버튼으로 저장하세요.`);
+      setPendingStudents(parsedStudents);
     } catch {
       setUploadStatus("❌ 파일을 읽는 중 오류가 발생했습니다.");
+    }
+  };
+
+  const confirmUpload = async () => {
+    if (!pendingStudents) return;
+    setUploadStatus("저장 중...");
+    const res = await bulkInsertStudents(pendingStudents, true);
+    setPendingStudents(null);
+    if (res.success) {
+      setUploadStatus(`✅ ${pendingStudents.length}명 업로드 완료!`);
+      refreshData();
+    } else {
+      setUploadStatus(`❌ 오류: ${res.error}`);
     }
   };
 
@@ -122,7 +128,27 @@ export default function AdminSettingsPage() {
         </div>
 
         {uploadStatus && (
-          <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3">{uploadStatus}</p>
+          <div className="mb-3 flex flex-col gap-2">
+            <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{uploadStatus}</p>
+            {pendingStudents && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={confirmUpload}
+                  className="flex-1 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition text-sm"
+                >
+                  ✅ {pendingStudents.length}명 저장하기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPendingStudents(null); setUploadStatus(null); }}
+                  className="px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg hover:bg-slate-200 transition text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {students.length > 0 && (
