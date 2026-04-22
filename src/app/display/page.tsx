@@ -12,6 +12,19 @@ type CallPayload = {
   sessionCode: string;
 };
 
+const DIGIT_MAP: Record<string, string> = {
+  "0": "공",
+  "1": "일",
+  "2": "이",
+  "3": "삼",
+  "4": "사",
+  "5": "오",
+  "6": "육",
+  "7": "칠",
+  "8": "팔",
+  "9": "구",
+};
+
 export default function DisplayPage() {
   const [sessionCode, setSessionCode] = useState("");
   const [isJoined, setIsJoined] = useState(false);
@@ -22,8 +35,31 @@ export default function DisplayPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    // 딩동 소리 로드
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
   }, []);
+
+  const formatStudentIdForTTS = (id: string) => {
+    return id.split("").map(char => DIGIT_MAP[char] || char).join(" ");
+  };
+
+  const speak = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    
+    // 이전 음성 취소 (겹침 방지 원할 경우)
+    // window.speechSynthesis.cancel(); 
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "ko-KR";
+    utterance.rate = 1.0;
+    
+    // 한국어 목소리 설정 (가능한 경우)
+    const voices = window.speechSynthesis.getVoices();
+    const koVoice = voices.find(v => v.lang.startsWith("ko"));
+    if (koVoice) utterance.voice = koVoice;
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     if (!socket || !isJoined || !sessionCode) return;
@@ -31,12 +67,24 @@ export default function DisplayPage() {
     const handleNewCalls = (students: CallPayload[]) => {
       const mine = students.filter((s) => s.sessionCode === sessionCode);
       if (mine.length === 0) return;
+      
       setActiveCalls(mine);
       setCountdown(60);
+
+      // 1. 알림음(비프음) 재생
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch((e) => console.warn("Audio autoplay blocked:", e));
       }
+
+      // 2. 음성 안내 (잠시 후 시작)
+      setTimeout(() => {
+        mine.forEach((call) => {
+          const formattedId = formatStudentIdForTTS(call.studentId);
+          const message = `${formattedId}번 ${call.studentName} 학생, ${call.reason} 용무로 ${call.locationName}${eulo(call.locationName)} 오세요.`;
+          speak(message);
+        });
+      }, 800);
     };
 
     socket.on("new-calls", handleNewCalls);
@@ -59,12 +107,18 @@ export default function DisplayPage() {
 
   const handleJoin = () => {
     if (!sessionCode.trim()) { alert("세션 코드를 입력해주세요."); return; }
+    
+    // 사용자 상호작용 시점에 오디오 및 TTS 권한 활성화 (일부 브라우저 대응)
     if (audioRef.current) {
       audioRef.current.play().then(() => {
         audioRef.current?.pause();
         audioRef.current!.currentTime = 0;
       }).catch(() => {});
     }
+    // 더미 TTS 실행하여 엔진 활성화
+    const dummy = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(dummy);
+
     if (socket) {
       socket.emit("join-session", sessionCode.trim());
       setIsJoined(true);
@@ -75,6 +129,7 @@ export default function DisplayPage() {
   const handleDisconnect = () => {
     setIsJoined(false);
     setActiveCalls([]);
+    window.speechSynthesis.cancel(); // 진행 중인 음성 중단
   };
 
   const eulo = (word: string) => {
@@ -113,7 +168,10 @@ export default function DisplayPage() {
         </div>
 
         <button
-          onClick={() => setActiveCalls([])}
+          onClick={() => {
+            setActiveCalls([]);
+            window.speechSynthesis.cancel();
+          }}
           className="mt-8 text-2xl font-bold bg-slate-900 text-white px-10 py-5 rounded-full hover:bg-slate-800 transition shadow-2xl active:scale-95"
         >
           확인했습니다
