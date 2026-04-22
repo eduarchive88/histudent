@@ -13,7 +13,7 @@ export async function GET() {
   utils.book_append_sheet(wb, ws, "학생명단");
   const buf: Buffer = write(wb, { type: "buffer", bookType: "xlsx" });
 
-  return new NextResponse(buf, {
+  return new NextResponse(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": 'attachment; filename*=UTF-8\'\'%ED%95%99%EC%83%9D%EB%AA%85%EB%8B%A8_%EC%96%91%EC%8B%9D.xlsx',
