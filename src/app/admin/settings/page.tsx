@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useActionState } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { getStudents, getLocations, addLocation, deleteLocation, uploadStudentsFromExcel } from "@/actions/admin";
 import { Upload, Trash2, Users, MapPin, Download } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
@@ -13,8 +13,8 @@ export default function AdminSettingsPage() {
   const [students, setStudents]   = useState<StudentType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
-
-  const [uploadResult, uploadAction, uploading] = useActionState(uploadStudentsFromExcel, null);
+  const [uploadMsg, setUploadMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const refreshData = async () => {
     const [st, loc] = await Promise.all([getStudents(), getLocations()]);
@@ -24,10 +24,26 @@ export default function AdminSettingsPage() {
 
   useEffect(() => { refreshData(); }, []);
 
-  // 업로드 성공 시 목록 갱신
-  useEffect(() => {
-    if (uploadResult?.count) refreshData();
-  }, [uploadResult]);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";          // 같은 파일 재선택 허용
+    if (!file) return;
+
+    setUploadMsg(null);
+
+    const formData = new FormData();
+    formData.append("excel", file);
+
+    startTransition(async () => {
+      const result = await uploadStudentsFromExcel(null, formData);
+      if (result.error) {
+        setUploadMsg({ type: "err", text: result.error });
+      } else {
+        setUploadMsg({ type: "ok", text: `${result.count}명 업로드 완료!` });
+        refreshData();
+      }
+    });
+  };
 
   const handleAddLocation = async () => {
     if (!newLocationName.trim()) return;
@@ -59,46 +75,47 @@ export default function AdminSettingsPage() {
           엑셀(.xlsx) 헤더: <strong>학년 / 반 / 번호 / 이름</strong>
         </p>
 
-        <form action={uploadAction} encType="multipart/form-data" className="flex flex-col gap-3">
-          <div className="flex gap-2">
-            <label className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition text-sm cursor-pointer">
-              <Upload className="w-4 h-4" />
-              {uploading ? "업로드 중..." : "엑셀 파일 선택 후 업로드"}
-              <input
-                type="file"
-                name="excel"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={(e) => e.currentTarget.form?.requestSubmit()}
-              />
-            </label>
-            <a
-              href="/api/sample-xlsx"
-              className="flex items-center gap-2 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 transition text-sm border border-slate-200 whitespace-nowrap"
-            >
-              <Download className="w-4 h-4" /> 샘플 양식
-            </a>
-          </div>
+        <div className="flex gap-2 mb-3">
+          <label className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-lg text-sm transition ${
+            isPending
+              ? "bg-indigo-300 text-white cursor-wait"
+              : "bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
+          }`}>
+            <Upload className="w-4 h-4" />
+            {isPending ? "서버에서 처리 중..." : "엑셀 파일 선택 → 즉시 업로드"}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              disabled={isPending}
+              onChange={handleFileChange}
+            />
+          </label>
+          <a
+            href="/api/sample-xlsx"
+            className="flex items-center gap-2 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 transition text-sm border border-slate-200 whitespace-nowrap"
+          >
+            <Download className="w-4 h-4" /> 샘플 양식
+          </a>
+        </div>
 
-          {uploading && (
-            <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              ⏳ 서버에서 파일 처리 중...
-            </p>
-          )}
-          {!uploading && uploadResult?.error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              ❌ {uploadResult.error}
-            </p>
-          )}
-          {!uploading && uploadResult?.count && (
-            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-              ✅ {uploadResult.count}명 업로드 완료!
-            </p>
-          )}
-        </form>
+        {isPending && (
+          <div className="mb-3 flex items-center gap-2 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+            <span className="animate-spin">⏳</span> 파일을 서버로 전송하고 있습니다...
+          </div>
+        )}
+        {!isPending && uploadMsg && (
+          <div className={`mb-3 text-sm rounded-lg px-3 py-2 border font-medium ${
+            uploadMsg.type === "ok"
+              ? "text-green-700 bg-green-50 border-green-200"
+              : "text-red-600 bg-red-50 border-red-200"
+          }`}>
+            {uploadMsg.type === "ok" ? "✅ " : "❌ "}{uploadMsg.text}
+          </div>
+        )}
 
         {students.length > 0 && (
-          <div className="mt-4 max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+          <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
             <table className="w-full text-xs">
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
