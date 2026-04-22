@@ -13,6 +13,8 @@ RUN npx prisma generate
 # Build Next.js application
 RUN npm run build
 
+ENV NODE_ENV=production
+
 # Expose port and start
 EXPOSE 3000
 

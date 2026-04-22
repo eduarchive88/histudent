@@ -6,6 +6,7 @@ services:
     expose:
       - "3000"
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://johndoe:randompassword@histudent-db:5432/mydb?schema=histudent
       - NEXT_PUBLIC_SOCKET_URL=https://histudent.eduarchive.duckdns.org
     labels:
