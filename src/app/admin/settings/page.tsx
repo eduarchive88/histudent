@@ -1,84 +1,151 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
-import { getStudents, getLocations, addLocation, deleteLocation, uploadStudentsFromExcel, getTeachers, addTeacher, deleteTeacher } from "@/actions/admin";
+import { useState, useEffect } from "react";
+import { read, utils } from "xlsx";
+import {
+  getStudents,
+  getLocations,
+  getTeachers,
+  addLocation,
+  deleteLocation,
+  addTeacher,
+  deleteTeacher,
+  replaceStudents,
+  LocalStudent,
+  LocalLocation,
+  LocalTeacher,
+} from "@/lib/localStore";
 import { Upload, Trash2, Users, MapPin, Download, UserCheck } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
 
-type StudentType = { id: number; grade: number; class: number; number: number; name: string; studentId: string };
-type LocationType = { id: number; name: string };
-type TeacherType  = { id: number; name: string };
-
 export default function AdminSettingsPage() {
-  const [students, setStudents]   = useState<StudentType[]>([]);
-  const [locations, setLocations] = useState<LocationType[]>([]);
-  const [teachers, setTeachers]   = useState<TeacherType[]>([]);
+  // ─── 상태 ─────────────────────────────────────────────────
+  const [students,   setStudents]   = useState<LocalStudent[]>([]);
+  const [locations,  setLocations]  = useState<LocalLocation[]>([]);
+  const [teachers,   setTeachers]   = useState<LocalTeacher[]>([]);
   const [newLocationName, setNewLocationName] = useState("");
-  const [newTeacherName, setNewTeacherName]   = useState("");
+  const [newTeacherName,  setNewTeacherName]  = useState("");
   const [uploadMsg, setUploadMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isUploading, setIsUploading] = useState(false);
 
-  const refreshData = async () => {
-    const [st, loc, tch] = await Promise.all([getStudents(), getLocations(), getTeachers()]);
-    setStudents(st);
-    setLocations(loc);
-    setTeachers(tch);
+  // ─── 초기 로드 (localStorage에서 불러오기) ─────────────────
+  const refreshData = () => {
+    setStudents(getStudents());
+    setLocations(getLocations());
+    setTeachers(getTeachers());
   };
 
-  useEffect(() => { refreshData(); }, []);
+  useEffect(() => {
+    refreshData();
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── 엑셀 파싱 (클라이언트에서 직접 처리) ─────────────────
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = "";          // 같은 파일 재선택 허용
+    e.target.value = ""; // 같은 파일 재선택 허용
     if (!file) return;
 
     setUploadMsg(null);
+    setIsUploading(true);
 
-    const formData = new FormData();
-    formData.append("excel", file);
+    try {
+      // 파일을 ArrayBuffer로 읽기
+      const bytes = await file.arrayBuffer();
+      const workbook = read(bytes);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = utils.sheet_to_json<Record<string, unknown>>(worksheet);
 
-    startTransition(async () => {
-      const result = await uploadStudentsFromExcel(null, formData);
-      if (result.error) {
-        setUploadMsg({ type: "err", text: result.error });
-      } else {
-        setUploadMsg({ type: "ok", text: `${result.count}명 업로드 완료!` });
-        refreshData();
+      if (jsonData.length === 0) {
+        setUploadMsg({ type: "err", text: "데이터를 찾지 못했습니다. 헤더(학년/반/번호/이름)를 확인하세요." });
+        return;
       }
-    });
+
+      // 실제 헤더 목록 — 이름 컬럼 못 찾을 때 진단용
+      const detectedHeaders = Object.keys(jsonData[0]).join(", ");
+
+      // 유연한 컬럼 매핑 헬퍼
+      const getVal = (row: Record<string, unknown>, keys: string[]) => {
+        const key = Object.keys(row).find((k) =>
+          keys.some((pk) =>
+            k.replace(/\s/g, "").toLowerCase().includes(pk.replace(/\s/g, "").toLowerCase())
+          )
+        );
+        return key ? row[key] : null;
+      };
+
+      const rows = jsonData.map((row) => {
+        const grade     = parseInt(String(getVal(row, ["학년", "grade", "년"]) ?? "1")) || 1;
+        const cls       = parseInt(String(getVal(row, ["반", "class", "학급", "班"]) ?? "1")) || 1;
+        const number    = parseInt(String(getVal(row, ["번호", "num", "number", "출석", "No", "no"]) ?? "1")) || 1;
+        const name      = String(getVal(row, ["이름", "성명", "학생명", "name", "성 명", "학생 이름"]) ?? "");
+        const studentId = `${grade}${String(cls).padStart(2, "0")}${String(number).padStart(2, "0")}`;
+        return { grade, class: cls, number, name: name || "이름없음", studentId };
+      });
+
+      // 이름 컬럼 확인
+      const noNames = jsonData.every((row) => {
+        const val = getVal(row, ["이름", "성명", "학생명", "name", "성 명", "학생 이름"]);
+        return !val;
+      });
+
+      if (noNames) {
+        setUploadMsg({
+          type: "err",
+          text: `이름 열을 찾지 못했습니다. 파일의 헤더: [${detectedHeaders}] — 이름/성명/학생명 중 하나가 있어야 합니다.`,
+        });
+        return;
+      }
+
+      // localStorage에 저장 (기존 데이터 교체)
+      replaceStudents(rows);
+      setUploadMsg({ type: "ok", text: `${rows.length}명 업로드 완료! (이 PC에만 저장됩니다)` });
+      refreshData();
+    } catch (err: unknown) {
+      setUploadMsg({ type: "err", text: err instanceof Error ? err.message : "알 수 없는 오류" });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleAddLocation = async () => {
+  // ─── 장소 CRUD ────────────────────────────────────────────
+  const handleAddLocation = () => {
     if (!newLocationName.trim()) return;
-    const res = await addLocation(newLocationName.trim());
-    if (res.success) { setNewLocationName(""); refreshData(); }
-    else alert(res.error);
-  };
-
-  const handleDeleteLocation = async (id: number) => {
-    if (!confirm("정말 삭제하시겠습니까?")) return;
-    await deleteLocation(id);
+    addLocation(newLocationName.trim());
+    setNewLocationName("");
     refreshData();
   };
 
-  const handleAddTeacher = async () => {
+  const handleDeleteLocation = (id: number) => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    deleteLocation(id);
+    refreshData();
+  };
+
+  // ─── 교사 CRUD ────────────────────────────────────────────
+  const handleAddTeacher = () => {
     if (!newTeacherName.trim()) return;
-    const res = await addTeacher(newTeacherName.trim());
-    if (res.success) { setNewTeacherName(""); refreshData(); }
-    else alert(res.error);
-  };
-
-  const handleDeleteTeacher = async (id: number) => {
-    if (!confirm("정말 삭제하시겠습니까?")) return;
-    await deleteTeacher(id);
+    addTeacher(newTeacherName.trim());
+    setNewTeacherName("");
     refreshData();
   };
 
+  const handleDeleteTeacher = (id: number) => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    deleteTeacher(id);
+    refreshData();
+  };
+
+  // ─── 렌더링 ───────────────────────────────────────────────
   return (
     <div className="flex-1 max-w-4xl w-full mx-auto p-4 flex flex-col gap-4 py-6">
       <AdminHeader />
       <AdminTabs />
+
+      {/* 로컬 저장 안내 배너 */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+        💾 <strong>모든 데이터는 이 PC의 브라우저에만 저장됩니다.</strong> 다른 선생님의 명단과 공유되지 않으며, 브라우저 데이터를 지우면 초기화됩니다.
+      </div>
 
       {/* 학생 명단 */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -93,18 +160,20 @@ export default function AdminSettingsPage() {
         </p>
 
         <div className="flex gap-2 mb-3">
-          <label className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-lg text-sm transition ${
-            isPending
-              ? "bg-indigo-300 text-white cursor-wait"
-              : "bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
-          }`}>
+          <label
+            className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-lg text-sm transition ${
+              isUploading
+                ? "bg-indigo-300 text-white cursor-wait"
+                : "bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
+            }`}
+          >
             <Upload className="w-4 h-4" />
-            {isPending ? "서버에서 처리 중..." : "엑셀 파일 선택 → 즉시 업로드"}
+            {isUploading ? "파일 처리 중..." : "엑셀 파일 선택 → 즉시 업로드"}
             <input
               type="file"
               accept=".xlsx,.xls"
               className="hidden"
-              disabled={isPending}
+              disabled={isUploading}
               onChange={handleFileChange}
             />
           </label>
@@ -116,18 +185,21 @@ export default function AdminSettingsPage() {
           </a>
         </div>
 
-        {isPending && (
+        {isUploading && (
           <div className="mb-3 flex items-center gap-2 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-            <span className="animate-spin">⏳</span> 파일을 서버로 전송하고 있습니다...
+            <span className="animate-spin">⏳</span> 파일을 분석하고 있습니다...
           </div>
         )}
-        {!isPending && uploadMsg && (
-          <div className={`mb-3 text-sm rounded-lg px-3 py-2 border font-medium ${
-            uploadMsg.type === "ok"
-              ? "text-green-700 bg-green-50 border-green-200"
-              : "text-red-600 bg-red-50 border-red-200"
-          }`}>
-            {uploadMsg.type === "ok" ? "✅ " : "❌ "}{uploadMsg.text}
+        {!isUploading && uploadMsg && (
+          <div
+            className={`mb-3 text-sm rounded-lg px-3 py-2 border font-medium ${
+              uploadMsg.type === "ok"
+                ? "text-green-700 bg-green-50 border-green-200"
+                : "text-red-600 bg-red-50 border-red-200"
+            }`}
+          >
+            {uploadMsg.type === "ok" ? "✅ " : "❌ "}
+            {uploadMsg.text}
           </div>
         )}
 
@@ -137,7 +209,9 @@ export default function AdminSettingsPage() {
               <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   {["학년", "반", "번호", "이름"].map((h) => (
-                    <th key={h} className="py-2 px-3 text-left text-slate-500 font-semibold">{h}</th>
+                    <th key={h} className="py-2 px-3 text-left text-slate-500 font-semibold">
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -183,7 +257,10 @@ export default function AdminSettingsPage() {
             <li className="text-sm text-slate-400 py-3 text-center">등록된 교사가 없습니다.</li>
           )}
           {teachers.map((t) => (
-            <li key={t.id} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
+            <li
+              key={t.id}
+              className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm"
+            >
               <span>{t.name}</span>
               <button
                 type="button"
@@ -224,7 +301,10 @@ export default function AdminSettingsPage() {
             <li className="text-sm text-slate-400 py-3 text-center">등록된 장소가 없습니다.</li>
           )}
           {locations.map((loc) => (
-            <li key={loc.id} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
+            <li
+              key={loc.id}
+              className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm"
+            >
               <span>{loc.name}</span>
               <button
                 type="button"
