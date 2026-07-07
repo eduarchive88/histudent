@@ -55,6 +55,9 @@ app.prepare().then(() => {
     if (role === "display") {
       session.displaySocketId = null;
       console.log(`[Socket] Display 해제: session=${sessionCode}`);
+
+      // 같은 세션의 관리자에게 디스플레이 해제 실시간 알림
+      io.to(sessionCode).emit("display-status-changed", { displayConnected: false });
     } else if (role === "admin") {
       session.adminSocketId = null;
       console.log(`[Socket] Admin 해제: session=${sessionCode}`);
@@ -105,6 +108,9 @@ app.prepare().then(() => {
       socket.join(code);
       socket.emit("session-joined", { ok: true });
       console.log(`[Socket] Display 입장: session=${code}, socket=${socket.id}`);
+
+      // 같은 세션의 관리자에게 디스플레이 접속 상태 실시간 알림 (display 자신 제외)
+      socket.to(code).emit("display-status-changed", { displayConnected: true });
     });
 
     // ─────────────────────────────────────────────────────────

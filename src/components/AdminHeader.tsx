@@ -51,6 +51,8 @@ export default function AdminHeader() {
         registeredCodeRef.current = sessionCode;
         setSessionError("");
         localStorage.setItem(LS_SESSION_OK, "true");
+        // ✅ 등록 성공 시 디스플레이 현재 상태를 즉시 조회 (새로고침 버그 해결)
+        socket.emit("check-session", sessionCode);
       } else {
         registeredCodeRef.current = "";
         setSessionError(error || "세션 등록에 실패했습니다.");
@@ -68,25 +70,30 @@ export default function AdminHeader() {
     }) => {
       setDisplayConnected(dc);
       if (adminTaken) {
-        // 서버에 아직 등록 안 됐는데 이미 누가 쓰고 있음
         if (registeredCodeRef.current !== sessionCode) {
           setSessionError(`"${sessionCode}" 세션은 이미 다른 교사가 사용 중입니다. 다른 코드를 사용해주세요.`);
           localStorage.setItem(LS_SESSION_OK, "false");
         }
       } else {
-        // 비어있고 내가 아직 등록 전이면 에러 초기화
         if (registeredCodeRef.current !== sessionCode) {
           setSessionError("");
         }
       }
     };
 
-    socket.on("admin-registered", onAdminRegistered);
-    socket.on("session-status",   onSessionStatus);
+    // ✅ 디스플레이 접속/해제 실시간 알림 (서버 브로드캐스트)
+    const onDisplayStatusChanged = ({ displayConnected: dc }: { displayConnected: boolean }) => {
+      setDisplayConnected(dc);
+    };
+
+    socket.on("admin-registered",       onAdminRegistered);
+    socket.on("session-status",         onSessionStatus);
+    socket.on("display-status-changed", onDisplayStatusChanged);
 
     return () => {
-      socket.off("admin-registered", onAdminRegistered);
-      socket.off("session-status",   onSessionStatus);
+      socket.off("admin-registered",       onAdminRegistered);
+      socket.off("session-status",         onSessionStatus);
+      socket.off("display-status-changed", onDisplayStatusChanged);
     };
   }, [socket, sessionCode]);
 
