@@ -30,6 +30,7 @@ export default function DisplayPage() {
   const [isJoined, setIsJoined] = useState(false);
   const [activeCalls, setActiveCalls] = useState<CallPayload[]>([]);
   const [countdown, setCountdown] = useState(0);
+  const [joinError, setJoinError] = useState(""); // 세션 중복 에러 메시지
 
   const { socket } = useSocket();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -107,7 +108,8 @@ export default function DisplayPage() {
 
   const handleJoin = () => {
     if (!sessionCode.trim()) { alert("세션 코드를 입력해주세요."); return; }
-    
+    setJoinError(""); // 이전 에러 초기화
+
     // 사용자 상호작용 시점에 오디오 및 TTS 권한 활성화 (일부 브라우저 대응)
     if (audioRef.current) {
       audioRef.current.play().then(() => {
@@ -120,9 +122,18 @@ export default function DisplayPage() {
     window.speechSynthesis.speak(dummy);
 
     if (socket) {
+      // 서버에서 세션 중복 여부를 확인 후 응답받기
       socket.emit("join-session", sessionCode.trim());
-      setIsJoined(true);
-      localStorage.setItem("histudent_display_session", sessionCode.trim());
+
+      // 서버 응답 1회 리스너
+      socket.once("session-joined", ({ ok, error }: { ok: boolean; error?: string }) => {
+        if (ok) {
+          setIsJoined(true);
+          localStorage.setItem("histudent_display_session", sessionCode.trim());
+        } else {
+          setJoinError(error || "세션 입장에 실패했습니다.");
+        }
+      });
     }
   };
 
@@ -211,10 +222,18 @@ export default function DisplayPage() {
             type="text"
             placeholder="세션 코드 입력 (예: class1)"
             value={sessionCode}
-            onChange={(e) => setSessionCode(e.target.value)}
+            onChange={(e) => { setSessionCode(e.target.value); setJoinError(""); }}
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-            className="w-full border-2 border-slate-300 px-4 py-4 rounded-xl text-xl text-center font-bold tracking-widest focus:border-blue-500 focus:outline-none uppercase"
+            className={`w-full border-2 px-4 py-4 rounded-xl text-xl text-center font-bold tracking-widest focus:outline-none uppercase ${
+              joinError ? "border-red-400 focus:border-red-500" : "border-slate-300 focus:border-blue-500"
+            }`}
           />
+          {/* 세션 중복 에러 메시지 */}
+          {joinError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 font-medium">
+              ❌ {joinError}
+            </div>
+          )}
           <button
             onClick={handleJoin}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl py-4 rounded-xl shadow-md transition"
