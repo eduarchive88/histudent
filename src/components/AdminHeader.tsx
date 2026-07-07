@@ -112,6 +112,13 @@ export default function AdminHeader() {
           </button>
         </div>
 
+        {/* 수동 설정 안내 */}
+        <p className="text-xs text-slate-400 leading-relaxed">
+          💡 코드는 <strong className="text-slate-500">자동 생성</strong>되며, 입력란에서 직접 원하는 코드로 바꿀 수 있습니다.
+          디스플레이 화면에서 <strong className="text-slate-500">같은 코드를 입력</strong>하면 연결됩니다.
+          단, 이미 다른 사람이 사용 중인 코드는 사용할 수 없습니다.
+        </p>
+
         {/* 디스플레이 접속 상태 표시 */}
         <div className="flex items-center gap-2">
           <Monitor className="w-3.5 h-3.5 text-slate-400" />
