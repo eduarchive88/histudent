@@ -75,6 +75,11 @@ export default function AdminCallPage() {
     if (!reason.trim())           { alert("용무 내용을 입력해주세요."); return; }
     if (!socket || !isConnected)  { alert("서버와 연결되어 있지 않습니다."); return; }
 
+    // 세션 코드 중복 차단 — AdminHeader가 localStorage에 기록한 플래그를 확인
+    if (localStorage.getItem("hs_session_ok") === "false") {
+      alert("세션 코드가 다른 교사와 중복됩니다. 관리자 패널 상단의 세션 코드를 변경해주세요.");
+      return;
+    }
     const code = localStorage.getItem(LS_SESSION) || sessionCode;
     if (!code)                    { alert("세션 코드가 설정되어 있지 않습니다."); return; }
 
@@ -295,11 +300,13 @@ export default function AdminCallPage() {
       <button
         type="button"
         onClick={handleCall}
-        disabled={!isConnected || selectedIds.size === 0}
+        disabled={!isConnected || selectedIds.size === 0 || localStorage.getItem("hs_session_ok") === "false"}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-lg py-4 rounded-xl transition shadow-md"
       >
         {!isConnected
           ? "서버 연결 대기 중..."
+          : localStorage.getItem("hs_session_ok") === "false"
+          ? "⛔ 세션 코드 중복 — 상단에서 변경하세요"
           : selectedIds.size === 0
           ? "학생을 선택하세요"
           : `${selectedIds.size}명 호출 전송 → "${sessionCode || "..."}" 세션`}

@@ -32,18 +32,18 @@ app.prepare().then(() => {
 
   /**
    * 활성 세션 레지스트리
-   * key: sessionCode (문자열)
-   * value: { displaySocketId, adminSocketIds }
-   *   - displaySocketId: 디스플레이 화면의 소켓 ID (1개만 허용)
-   *   - adminSocketIds: 관리자 소켓 ID 집합 (여러 탭/기기 허용)
+   * key: sessionCode
+   * value: {
+   *   displaySocketId: string|null  — 디스플레이 화면 (1개만 허용)
+   *   adminSocketId:   string|null  — 관리자 교사 (1명만 허용, PC 단위)
+   * }
    */
   const sessions = new Map();
-  // Map<sessionCode, { displaySocketId: string|null, adminSocketIds: Set<string> }>
 
-  /** 소켓이 현재 점유 중인 세션 코드 역방향 맵 */
-  const socketToSession = new Map(); // socketId -> { sessionCode, role }
+  /** 소켓 → { sessionCode, role } 역방향 맵 */
+  const socketToSession = new Map();
 
-  /** 세션에서 소켓 해제 */
+  /** 세션에서 소켓 제거, 세션이 완전히 비면 삭제 */
   function releaseSocket(socketId) {
     const entry = socketToSession.get(socketId);
     if (!entry) return;
@@ -56,12 +56,12 @@ app.prepare().then(() => {
       session.displaySocketId = null;
       console.log(`[Socket] Display 해제: session=${sessionCode}`);
     } else if (role === "admin") {
-      session.adminSocketIds.delete(socketId);
-      console.log(`[Socket] Admin 해제: session=${sessionCode}, remaining=${session.adminSocketIds.size}`);
+      session.adminSocketId = null;
+      console.log(`[Socket] Admin 해제: session=${sessionCode}`);
     }
 
     // 디스플레이도 없고 관리자도 없으면 세션 완전 삭제
-    if (!session.displaySocketId && session.adminSocketIds.size === 0) {
+    if (!session.displaySocketId && !session.adminSocketId) {
       sessions.delete(sessionCode);
       console.log(`[Socket] 세션 삭제: ${sessionCode}`);
     }
@@ -72,11 +72,10 @@ app.prepare().then(() => {
   io.on("connection", (socket) => {
     console.log(`[Socket] connected: ${socket.id}`);
 
-    /**
-     * 디스플레이 화면 세션 입장 (중복 방지)
-     * 클라이언트: socket.emit("join-session", sessionCode)
-     * 응답: socket.emit("session-joined", { ok, error? })
-     */
+    // ─────────────────────────────────────────────────────────
+    // 디스플레이 화면 세션 입장 (중복 방지)
+    // emit: join-session  → 응답: session-joined { ok, error? }
+    // ─────────────────────────────────────────────────────────
     socket.on("join-session", (sessionCode) => {
       if (!sessionCode || typeof sessionCode !== "string") {
         socket.emit("session-joined", { ok: false, error: "세션 코드가 올바르지 않습니다." });
@@ -86,21 +85,19 @@ app.prepare().then(() => {
       const code = sessionCode.trim();
       const session = sessions.get(code);
 
-      // 이미 다른 디스플레이가 해당 세션을 점유 중인지 확인
+      // 이미 다른 디스플레이가 점유 중이면 차단
       if (session && session.displaySocketId && session.displaySocketId !== socket.id) {
-        console.log(`[Socket] 세션 중복 차단: ${code} (점유자: ${session.displaySocketId})`);
         socket.emit("session-joined", {
           ok: false,
-          error: `"${code}" 세션은 이미 다른 화면에서 사용 중입니다. 다른 세션 코드를 사용해주세요.`,
+          error: `"${code}" 세션 디스플레이는 이미 다른 화면에서 연결 중입니다.`,
         });
         return;
       }
 
-      // 이전 세션 해제 후 새 세션 등록
       releaseSocket(socket.id);
 
       if (!sessions.has(code)) {
-        sessions.set(code, { displaySocketId: null, adminSocketIds: new Set() });
+        sessions.set(code, { displaySocketId: null, adminSocketId: null });
       }
       sessions.get(code).displaySocketId = socket.id;
       socketToSession.set(socket.id, { sessionCode: code, role: "display" });
@@ -110,11 +107,10 @@ app.prepare().then(() => {
       console.log(`[Socket] Display 입장: session=${code}, socket=${socket.id}`);
     });
 
-    /**
-     * 관리자 세션 등록 (중복 방지 없음 — 같은 세션 코드로 여러 관리자 탭 허용)
-     * 클라이언트: socket.emit("register-admin", sessionCode)
-     * 응답: socket.emit("admin-registered", { ok, error? })
-     */
+    // ─────────────────────────────────────────────────────────
+    // 관리자(교사) 세션 등록 — 1개 세션에 1명만 허용
+    // emit: register-admin  → 응답: admin-registered { ok, error? }
+    // ─────────────────────────────────────────────────────────
     socket.on("register-admin", (sessionCode) => {
       if (!sessionCode || typeof sessionCode !== "string") {
         socket.emit("admin-registered", { ok: false, error: "세션 코드가 올바르지 않습니다." });
@@ -122,15 +118,24 @@ app.prepare().then(() => {
       }
 
       const code = sessionCode.trim();
+      const session = sessions.get(code);
 
-      // 이미 다른 소켓이 이 코드로 디스플레이에 등록된 경우 → 관리자는 허용
-      // 단, 다른 관리자가 같은 코드 사용 중이면 경고만 (차단하지 않음)
+      // 다른 교사가 이미 이 세션 코드를 사용 중이면 차단
+      if (session && session.adminSocketId && session.adminSocketId !== socket.id) {
+        console.log(`[Socket] Admin 중복 차단: session=${code} (점유자: ${session.adminSocketId})`);
+        socket.emit("admin-registered", {
+          ok: false,
+          error: `"${code}" 세션은 이미 다른 교사가 사용 중입니다. 다른 세션 코드를 사용해주세요.`,
+        });
+        return;
+      }
+
       releaseSocket(socket.id);
 
       if (!sessions.has(code)) {
-        sessions.set(code, { displaySocketId: null, adminSocketIds: new Set() });
+        sessions.set(code, { displaySocketId: null, adminSocketId: null });
       }
-      sessions.get(code).adminSocketIds.add(socket.id);
+      sessions.get(code).adminSocketId = socket.id;
       socketToSession.set(socket.id, { sessionCode: code, role: "admin" });
 
       socket.join(code);
@@ -138,25 +143,30 @@ app.prepare().then(() => {
       console.log(`[Socket] Admin 등록: session=${code}, socket=${socket.id}`);
     });
 
-    /**
-     * 세션 코드 사용 가능 여부 확인 (관리자가 코드 입력 시 실시간 체크)
-     * 클라이언트: socket.emit("check-session", sessionCode)
-     * 응답: socket.emit("session-status", { available, displayConnected })
-     */
+    // ─────────────────────────────────────────────────────────
+    // 세션 코드 실시간 사용 가능 여부 확인
+    // emit: check-session  → 응답: session-status { adminTaken, displayConnected }
+    // ─────────────────────────────────────────────────────────
     socket.on("check-session", (sessionCode) => {
       const code = (sessionCode || "").trim();
       const session = sessions.get(code);
+
+      // 자기 자신이 이미 이 세션의 admin이면 → 사용 중이어도 ok(자기 것)
+      const myEntry = socketToSession.get(socket.id);
+      const isMine = myEntry && myEntry.sessionCode === code && myEntry.role === "admin";
+
+      const adminTaken = !!(session && session.adminSocketId && !isMine);
       const displayConnected = !!(session && session.displaySocketId);
-      socket.emit("session-status", {
-        available: !displayConnected,
-        displayConnected,
-      });
+
+      socket.emit("session-status", { adminTaken, displayConnected });
     });
 
-    // 교사가 특정 세션으로 학생 호출 (배치)
+    // ─────────────────────────────────────────────────────────
+    // 학생 호출 브로드캐스트 — 해당 세션 룸 전체에 전송
+    // ─────────────────────────────────────────────────────────
     socket.on("call-students", ({ sessionCode, students }) => {
       const code = (sessionCode || "").trim();
-      console.log(`[Socket] emit batch call to session ${code}`, students);
+      console.log(`[Socket] call to session=${code}`, students.map(s => s.studentName));
       io.to(code).emit("new-calls", students);
     });
 
