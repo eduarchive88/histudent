@@ -10,6 +10,7 @@ type CallPayload = {
   locationName: string;
   callerName?: string;
   sessionCode: string;
+  timeout?: number;
 };
 
 const DIGIT_MAP: Record<string, string> = {
@@ -70,7 +71,7 @@ export default function DisplayPage() {
       if (mine.length === 0) return;
       
       setActiveCalls(mine);
-      setCountdown(60);
+      setCountdown(mine[0].timeout || 120);
 
       // 1. 알림음(비프음) 재생
       if (audioRef.current) {

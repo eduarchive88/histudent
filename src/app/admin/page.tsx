@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSocket } from "@/lib/socketClient";
-import { getStudents, getLocations, getTeachers, addCallHistory, LocalStudent, LocalLocation, LocalTeacher } from "@/lib/localStore";
+import { getStudents, getLocations, getTeachers, addCallHistory, getDisplayTimeout, LocalStudent, LocalLocation, LocalTeacher } from "@/lib/localStore";
 import { BellRing, Users, MapPin, Search, X, UserCheck } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
@@ -91,6 +91,7 @@ export default function AdminCallPage() {
     const caller = callerName.trim() || undefined;
 
     // Socket.IO로 호출 이벤트 전송
+    const timeout = getDisplayTimeout();
     const batch = targets.map((s) => ({
       studentId: s.studentId,
       studentName: s.name,
@@ -98,6 +99,7 @@ export default function AdminCallPage() {
       locationName: locInfo.name,
       callerName: caller,
       sessionCode: code,
+      timeout,
     }));
 
     socket.emit("call-students", { sessionCode: code, students: batch });

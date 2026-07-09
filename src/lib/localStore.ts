@@ -41,6 +41,7 @@ const KEY_LOCATIONS   = "hs_locations";
 const KEY_TEACHERS    = "hs_teachers";
 const KEY_CALL_HISTORY = "hs_call_history";
 const KEY_ID_COUNTER  = "hs_id_counter";
+const KEY_DISPLAY_TIMEOUT = "hs_display_timeout";
 
 // ─── 공통 유틸 ───────────────────────────────────────────────
 
@@ -132,7 +133,20 @@ export function deleteTeacher(id: number): void {
   localStorage.setItem(KEY_TEACHERS, JSON.stringify(filtered));
 }
 
+// ─── 환경 설정 ───────────────────────────────────────────────
+
+/** 디스플레이 호출 유지 시간(초) 조회 */
+export function getDisplayTimeout(): number {
+  return parseJson<number>(KEY_DISPLAY_TIMEOUT, 120);
+}
+
+/** 디스플레이 호출 유지 시간(초) 저장 */
+export function setDisplayTimeout(seconds: number): void {
+  localStorage.setItem(KEY_DISPLAY_TIMEOUT, JSON.stringify(seconds));
+}
+
 // ─── 호출 기록 ───────────────────────────────────────────────
+
 
 /** 저장된 호출 기록 전체 조회 (최신순) */
 export function getCallHistory(): LocalCallHistory[] {

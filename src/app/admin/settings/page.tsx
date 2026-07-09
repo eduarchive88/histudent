@@ -11,11 +11,13 @@ import {
   addTeacher,
   deleteTeacher,
   replaceStudents,
+  getDisplayTimeout,
+  setDisplayTimeout,
   LocalStudent,
   LocalLocation,
   LocalTeacher,
 } from "@/lib/localStore";
-import { Upload, Trash2, Users, MapPin, Download, UserCheck } from "lucide-react";
+import { Upload, Trash2, Users, MapPin, Download, UserCheck, Clock } from "lucide-react";
 import AdminHeader from "@/components/AdminHeader";
 import AdminTabs from "@/components/AdminTabs";
 
@@ -24,6 +26,7 @@ export default function AdminSettingsPage() {
   const [students,   setStudents]   = useState<LocalStudent[]>([]);
   const [locations,  setLocations]  = useState<LocalLocation[]>([]);
   const [teachers,   setTeachers]   = useState<LocalTeacher[]>([]);
+  const [displayTimeout, setDisplayTimeoutState] = useState<number>(120);
   const [newLocationName, setNewLocationName] = useState("");
   const [newTeacherName,  setNewTeacherName]  = useState("");
   const [uploadMsg, setUploadMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -34,6 +37,7 @@ export default function AdminSettingsPage() {
     setStudents(getStudents());
     setLocations(getLocations());
     setTeachers(getTeachers());
+    setDisplayTimeoutState(getDisplayTimeout());
   };
 
   useEffect(() => {
@@ -106,6 +110,16 @@ export default function AdminSettingsPage() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // ─── 환경 설정 ────────────────────────────────────────────
+  const handleTimeoutChange = (val: string) => {
+    let num = parseInt(val, 10);
+    if (isNaN(num)) num = 120;
+    if (num < 5) num = 5;
+    if (num > 600) num = 600;
+    setDisplayTimeoutState(num);
+    setDisplayTimeout(num);
   };
 
   // ─── 장소 CRUD ────────────────────────────────────────────
@@ -316,6 +330,31 @@ export default function AdminSettingsPage() {
             </li>
           ))}
         </ul>
+      </div>
+
+      {/* 디스플레이 설정 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <Clock className="text-blue-500 w-5 h-5" /> 디스플레이 설정
+        </h2>
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-slate-700">호출 유지 시간 (초)</label>
+          <p className="text-xs text-slate-400 mb-2">
+            학생 디스플레이 화면에 호출 알림이 떠 있는 시간을 설정합니다. (최소 5초 ~ 최대 600초)
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="5"
+              max="600"
+              value={displayTimeout}
+              onChange={(e) => setDisplayTimeoutState(parseInt(e.target.value) || 120)}
+              onBlur={(e) => handleTimeoutChange(e.target.value)}
+              className="border border-slate-300 px-3 py-2 rounded-lg text-sm w-32 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+            />
+            <span className="text-sm text-slate-600">초</span>
+          </div>
+        </div>
       </div>
     </div>
   );
